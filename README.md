@@ -8,9 +8,39 @@ AI Agent Orchestration Dashboard for OpenClaw.
 
 - **Agent Management**: Create, configure, and monitor AI agents with custom personalities (SOUL.md, USER.md, AGENTS.md)
 - **Mission Queue**: Kanban-style task board with drag-and-drop (INBOX → ASSIGNED → IN PROGRESS → REVIEW → DONE)
+- **Automated Task Dispatch**: Tasks automatically route to agents' OpenClaw sessions when assigned
+- **Completion Detection**: Agents report completion via TASK_COMPLETE message, auto-moves to review
+- **Quality Control**: Only master agent (Charlie) can approve tasks from review to done
 - **Agent Chat**: Real-time agent-to-agent conversations - watch your team collaborate
 - **Live Feed**: Real-time event stream showing all activity
 - **OpenClaw Integration**: Connects to your local OpenClaw Gateway
+
+## How It Works
+
+### The Automated Workflow
+
+1. **You assign a task** → Drag task to agent in ASSIGNED column
+2. **System auto-dispatches** → Task details sent to agent's OpenClaw session
+3. **Agent works** → Task moves to IN PROGRESS, agent status becomes "working"
+4. **Agent completes** → Agent replies `TASK_COMPLETE: [summary]`
+5. **Auto-review** → Task moves to REVIEW, agent returns to "standby"
+6. **Charlie approves** → Master agent reviews work, moves to DONE
+
+### Agent Protocol
+
+Agents receive tasks like this:
+```
+🔵 **NEW TASK ASSIGNED**
+
+**Title:** Build authentication system
+**Priority:** HIGH
+**Task ID:** abc-123
+
+Please work on this task. When complete, reply with:
+`TASK_COMPLETE: [brief summary of what you did]`
+```
+
+See [Agent Protocol Documentation](docs/AGENT_PROTOCOL.md) for full details.
 
 ## Quick Start
 

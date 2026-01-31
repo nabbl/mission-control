@@ -38,7 +38,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const body: UpdateTaskRequest = await request.json();
+    const body: UpdateTaskRequest & { updated_by_agent_id?: string } = await request.json();
 
     const existing = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
     if (!existing) {
@@ -48,6 +48,28 @@ export async function PATCH(
     const updates: string[] = [];
     const values: unknown[] = [];
     const now = new Date().toISOString();
+
+    // Workflow enforcement: Only master agents can move from review to done
+    if (body.status === 'done' && existing.status === 'review') {
+      if (!body.updated_by_agent_id) {
+        return NextResponse.json(
+          { error: 'Approval required: only master agent can move tasks from review to done' },
+          { status: 403 }
+        );
+      }
+
+      const updatingAgent = queryOne<Agent>(
+        'SELECT is_master FROM agents WHERE id = ?',
+        [body.updated_by_agent_id]
+      );
+
+      if (!updatingAgent || !updatingAgent.is_master) {
+        return NextResponse.json(
+          { error: 'Forbidden: only master agent (Charlie) can approve tasks' },
+          { status: 403 }
+        );
+      }
+    }
 
     if (body.title !== undefined) {
       updates.push('title = ?');
@@ -66,10 +88,18 @@ export async function PATCH(
       values.push(body.due_date);
     }
 
+    // Track if we need to dispatch task
+    let shouldDispatch = false;
+
     // Handle status change
     if (body.status !== undefined && body.status !== existing.status) {
       updates.push('status = ?');
       values.push(body.status);
+
+      // Auto-dispatch when moving to assigned
+      if (body.status === 'assigned' && existing.assigned_agent_id) {
+        shouldDispatch = true;
+      }
 
       // Log status change event
       const eventType = body.status === 'done' ? 'task_completed' : 'task_status_changed';
@@ -94,8 +124,10 @@ export async function PATCH(
             [uuidv4(), 'task_assigned', body.assigned_agent_id, id, `"${existing.title}" assigned to ${agent.name}`, now]
           );
 
-          // Update agent status to working
-          run('UPDATE agents SET status = ?, updated_at = ? WHERE id = ?', ['working', now, body.assigned_agent_id]);
+          // Auto-dispatch if already in assigned status or being assigned now
+          if (existing.status === 'assigned' || body.status === 'assigned') {
+            shouldDispatch = true;
+          }
         }
       }
     }
@@ -111,6 +143,18 @@ export async function PATCH(
     run(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, values);
 
     const task = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
+
+    // Trigger auto-dispatch if needed
+    if (shouldDispatch) {
+      // Call dispatch endpoint asynchronously (don't wait for response)
+      fetch(`http://localhost:3000/api/tasks/${id}/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(err => {
+        console.error('Auto-dispatch failed:', err);
+      });
+    }
+
     return NextResponse.json(task);
   } catch (error) {
     console.error('Failed to update task:', error);
