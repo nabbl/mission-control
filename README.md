@@ -8,6 +8,8 @@ Mission Control is a task management system that lets you create tasks, plan the
 
 > **🎉 v1.0.0 Released!** First official working build. See [CHANGELOG.md](CHANGELOG.md) for details.
 
+![Mission Control Screenshot](mission-control.png)
+
 ---
 
 ## 🎯 What Does It Do?
