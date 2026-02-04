@@ -1,6 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
+import { readFileSync, existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+// Helper to get messages from transcript file directly
+function getMessagesFromTranscript(sessionKey: string): Array<{ role: string; content: string }> {
+  try {
+    const sessionsDir = join(homedir(), '.openclaw', 'agents', 'main', 'sessions');
+    const sessionsFile = join(sessionsDir, 'sessions.json');
+    
+    if (!existsSync(sessionsFile)) return [];
+    
+    const sessions = JSON.parse(readFileSync(sessionsFile, 'utf-8'));
+    const session = Object.values(sessions).find((s: unknown) => 
+      (s as { key: string }).key === sessionKey
+    ) as { transcriptPath?: string; sessionId?: string } | undefined;
+    
+    if (!session) return [];
+    
+    const transcriptPath = session.transcriptPath 
+      ? join(sessionsDir, session.transcriptPath)
+      : join(sessionsDir, `${session.sessionId}.jsonl`);
+    
+    if (!existsSync(transcriptPath)) return [];
+    
+    const content = readFileSync(transcriptPath, 'utf-8');
+    const lines = content.trim().split('\n');
+    const messages: Array<{ role: string; content: string }> = [];
+    
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === 'message' && entry.message?.role === 'assistant') {
+          const textContent = entry.message.content?.find((c: { type: string }) => c.type === 'text');
+          if (textContent?.text) {
+            messages.push({ role: 'assistant', content: textContent.text });
+          }
+        }
+      } catch {
+        // Skip invalid lines
+      }
+    }
+    
+    return messages;
+  } catch (err) {
+    console.error('[Planning] Failed to read transcript:', err);
+    return [];
+  }
+}
 
 // POST /api/tasks/[id]/planning/answer - Submit an answer and get next question
 export async function POST(
@@ -101,30 +150,24 @@ If planning is complete, respond with JSON:
       UPDATE tasks SET planning_messages = ? WHERE id = ?
     `).run(JSON.stringify(messages), taskId);
 
-    // Poll for response
+    // Poll for response by reading transcript directly
     let response = null;
+    const initialMsgCount = getMessagesFromTranscript(task.planning_session_key!).length;
+    
     for (let i = 0; i < 30; i++) {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      try {
-        const history = await client.call<{ messages: Array<{ role: string; content: string }> }>('chat.history', {
-          sessionKey: task.planning_session_key,
-          limit: 50,
-        });
-
-        if (history && history.messages) {
-          // Find the latest assistant message after our user message
-          const allMessages = history.messages;
-          const lastUserIdx = allMessages.map((m: { role: string }) => m.role).lastIndexOf('user');
-          const assistantAfterUser = allMessages.slice(lastUserIdx + 1).find((m: { role: string }) => m.role === 'assistant');
-          
-          if (assistantAfterUser) {
-            response = assistantAfterUser.content;
-            break;
-          }
+      const transcriptMessages = getMessagesFromTranscript(task.planning_session_key!);
+      console.log('[Planning] Answer poll - transcript messages:', transcriptMessages.length, 'initial:', initialMsgCount);
+      
+      // Check if there's a new assistant message
+      if (transcriptMessages.length > initialMsgCount) {
+        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant');
+        if (lastAssistant) {
+          response = lastAssistant.content;
+          console.log('[Planning] Found new response in transcript');
+          break;
         }
-      } catch (err) {
-        console.log('Polling for response...', err);
       }
     }
 

@@ -1,9 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
+import { readFileSync, existsSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 // Planning session prefix for OpenClaw (must match agent:main: format)
 const PLANNING_SESSION_PREFIX = 'agent:main:planning:';
+
+// Helper to get messages from transcript file directly
+function getMessagesFromTranscript(sessionKey: string): Array<{ role: string; content: string }> {
+  try {
+    // Get session info to find transcript path
+    const sessionsDir = join(homedir(), '.openclaw', 'agents', 'main', 'sessions');
+    const sessionsFile = join(sessionsDir, 'sessions.json');
+    
+    if (!existsSync(sessionsFile)) return [];
+    
+    const sessions = JSON.parse(readFileSync(sessionsFile, 'utf-8'));
+    const session = Object.values(sessions).find((s: unknown) => 
+      (s as { key: string }).key === sessionKey
+    ) as { transcriptPath?: string; sessionId?: string } | undefined;
+    
+    if (!session) return [];
+    
+    // Try to find transcript file
+    const transcriptPath = session.transcriptPath 
+      ? join(sessionsDir, session.transcriptPath)
+      : join(sessionsDir, `${session.sessionId}.jsonl`);
+    
+    if (!existsSync(transcriptPath)) return [];
+    
+    // Parse JSONL transcript
+    const content = readFileSync(transcriptPath, 'utf-8');
+    const lines = content.trim().split('\n');
+    const messages: Array<{ role: string; content: string }> = [];
+    
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === 'message' && entry.message?.role === 'assistant') {
+          // Extract text content from assistant messages
+          const textContent = entry.message.content?.find((c: { type: string }) => c.type === 'text');
+          if (textContent?.text) {
+            messages.push({
+              role: 'assistant',
+              content: textContent.text
+            });
+          }
+        }
+      } catch {
+        // Skip invalid lines
+      }
+    }
+    
+    return messages;
+  } catch (err) {
+    console.error('[Planning] Failed to read transcript:', err);
+    return [];
+  }
+}
 
 // GET /api/tasks/[id]/planning - Get planning state
 export async function GET(
@@ -143,55 +199,22 @@ Respond with ONLY valid JSON in this format:
     `).run(sessionKey, JSON.stringify(messages), taskId);
 
     // Poll for response (give OpenClaw time to process)
-    // In production, this would be better handled with webhooks or SSE
+    // Read directly from transcript file as primary method
     let response = null;
-    for (let i = 0; i < 60; i++) { // Poll for up to 60 seconds
+    for (let i = 0; i < 30; i++) { // Poll for up to 30 seconds
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      try {
-        // Try sessions.preview to get last messages
-        const preview = await client.call<{ 
-          messages?: Array<{ role: string; content: string }>;
-          lastMessages?: Array<{ role: string; content: string }>;
-        }>('sessions.preview', {
-          sessionKey: sessionKey,
-        });
-        
-        console.log('[Planning] Preview response:', JSON.stringify(preview));
-        
-        const msgs = preview?.messages || preview?.lastMessages || [];
-        if (msgs.length > 0) {
-          const assistantMessage = msgs.find((m: { role: string }) => m.role === 'assistant');
-          if (assistantMessage) {
-            response = assistantMessage.content;
-            break;
-          }
-        }
-      } catch (err) {
-        console.log('[Planning] Polling for response...', err);
-        
-        // Fallback: try chat.history
-        try {
-          const history = await client.call<{ 
-            messages?: Array<{ role: string; content: string }>;
-            history?: Array<{ role: string; content: string }>;
-          }>('chat.history', {
-            sessionKey: sessionKey,
-            limit: 10,
-          });
-          
-          console.log('[Planning] History response:', JSON.stringify(history));
-          
-          const msgs = history?.messages || history?.history || [];
-          if (msgs.length > 0) {
-            const assistantMessage = msgs.find((m: { role: string }) => m.role === 'assistant');
-            if (assistantMessage) {
-              response = assistantMessage.content;
-              break;
-            }
-          }
-        } catch (histErr) {
-          console.log('[Planning] History fallback failed:', histErr);
+      // Read messages directly from transcript file
+      const transcriptMessages = getMessagesFromTranscript(sessionKey);
+      console.log('[Planning] Transcript messages:', transcriptMessages.length);
+      
+      if (transcriptMessages.length > 0) {
+        // Get the last assistant message
+        const lastAssistant = [...transcriptMessages].reverse().find(m => m.role === 'assistant');
+        if (lastAssistant) {
+          response = lastAssistant.content;
+          console.log('[Planning] Found response in transcript');
+          break;
         }
       }
     }
