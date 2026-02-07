@@ -84,8 +84,15 @@ export async function GET(request: Request, { params }: RouteParams) {
       }
 
       if (sessionsResult.status === 'fulfilled') {
-        sessionInfo = sessionsResult.value.find(
-          (s: OpenClawSessionInfo) => s.id === sessionKey || s.id === session.openclaw_session_id
+        // listSessions() may return an array or a payload object with { sessions: [...] }
+        const raw = sessionsResult.value as unknown;
+        const sessionsList: OpenClawSessionInfo[] = Array.isArray(raw)
+          ? raw
+          : (raw && typeof raw === 'object' && 'sessions' in raw && Array.isArray((raw as Record<string, unknown>).sessions))
+            ? (raw as Record<string, unknown>).sessions as OpenClawSessionInfo[]
+            : [];
+        sessionInfo = sessionsList.find(
+          (s) => s.id === sessionKey || s.id === session.openclaw_session_id || s.key === sessionKey
         );
       }
     } catch (err) {
@@ -106,7 +113,12 @@ export async function GET(request: Request, { params }: RouteParams) {
       sessionId: session.openclaw_session_id,
       sessionStatus: sessionInfo?.status ?? session.status,
       model: sessionInfo?.model ?? task.model ?? undefined,
-      modelProvider: task.model_provider ?? undefined,
+      modelProvider: sessionInfo?.modelProvider ?? task.model_provider ?? undefined,
+      tokenUsage: sessionInfo?.totalTokens ? {
+        input: sessionInfo.inputTokens,
+        output: sessionInfo.outputTokens,
+        total: sessionInfo.totalTokens,
+      } : undefined,
     };
 
     return NextResponse.json(response);
