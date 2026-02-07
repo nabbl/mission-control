@@ -151,6 +151,27 @@ const migrations: Migration[] = [
         console.log('[Migration 004] Added planning_agents');
       }
     }
+  },
+  {
+    id: '005',
+    name: 'add_model_config',
+    up: (db) => {
+      console.log('[Migration 005] Adding model config columns...');
+
+      const agentsInfo = db.prepare("PRAGMA table_info(agents)").all() as { name: string }[];
+      if (!agentsInfo.some(col => col.name === 'model_provider')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN model_provider TEXT`);
+        db.exec(`ALTER TABLE agents ADD COLUMN model TEXT`);
+        console.log('[Migration 005] Added model_provider, model to agents');
+      }
+
+      const tasksInfo = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+      if (!tasksInfo.some(col => col.name === 'model_provider')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN model_provider TEXT`);
+        db.exec(`ALTER TABLE tasks ADD COLUMN model TEXT`);
+        console.log('[Migration 005] Added model_provider, model to tasks');
+      }
+    }
   }
 ];
 

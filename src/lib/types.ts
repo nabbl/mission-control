@@ -15,6 +15,7 @@ export type EventType =
   | 'task_assigned'
   | 'task_status_changed'
   | 'task_completed'
+  | 'task_restarted'
   | 'message_sent'
   | 'agent_status_changed'
   | 'agent_joined'
@@ -29,6 +30,8 @@ export interface Agent {
   status: AgentStatus;
   is_master: boolean;
   workspace_id: string;
+  model_provider?: string;
+  model?: string;
   soul_md?: string;
   user_md?: string;
   agents_md?: string;
@@ -47,6 +50,8 @@ export interface Task {
   workspace_id: string;
   business_id: string;
   due_date?: string;
+  model_provider?: string;
+  model?: string;
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -214,6 +219,35 @@ export interface PlanningState {
     percentage: number;
   };
   isLocked: boolean;
+}
+
+// Transcript types (agent work visibility)
+export type TranscriptEntryRole = 'user' | 'assistant' | 'system' | 'tool_call' | 'tool_result';
+
+export interface TranscriptEntry {
+  id: string;
+  role: TranscriptEntryRole;
+  content: string;
+  timestamp?: string;
+  // Tool call specific
+  toolName?: string;
+  toolCallId?: string;
+  // Content block details (Claude API format)
+  isError?: boolean;
+}
+
+export interface TranscriptResponse {
+  entries: TranscriptEntry[];
+  model?: string;
+  modelProvider?: string;
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    total?: number;
+  };
+  sessionStatus?: string;
+  sessionId?: string;
+  error?: string;
 }
 
 // API request/response types

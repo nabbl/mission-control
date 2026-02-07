@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ChevronRight, Zap, ZapOff, Loader2 } from 'lucide-react';
+import { Plus, ChevronRight, Zap, ZapOff, Loader2, Cpu } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
-import type { Agent, AgentStatus, OpenClawSession } from '@/lib/types';
+import type { Agent, AgentStatus, OpenClawSession, OpenClawSessionInfo } from '@/lib/types';
 import { AgentModal } from './AgentModal';
 
 type FilterTab = 'all' | 'working' | 'standby';
@@ -19,6 +19,8 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [connectingAgentId, setConnectingAgentId] = useState<string | null>(null);
   const [activeSubAgents, setActiveSubAgents] = useState(0);
+  // Map: openclaw_session_id -> session info (model, status)
+  const [sessionInfoMap, setSessionInfoMap] = useState<Record<string, OpenClawSessionInfo>>({});
 
   // Load OpenClaw session status for all agents on mount
   useEffect(() => {
@@ -60,6 +62,31 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
 
     // Poll every 10 seconds to keep count updated
     const interval = setInterval(loadSubAgentCount, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll OpenClaw gateway for session model info
+  useEffect(() => {
+    const loadSessionInfo = async () => {
+      try {
+        const res = await fetch('/api/openclaw/status');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.connected && Array.isArray(data.sessions)) {
+            const map: Record<string, OpenClawSessionInfo> = {};
+            for (const s of data.sessions as OpenClawSessionInfo[]) {
+              map[s.id] = s;
+            }
+            setSessionInfoMap(map);
+          }
+        }
+      } catch {
+        // Silently fail — sidebar info is supplementary
+      }
+    };
+
+    loadSessionInfo();
+    const interval = setInterval(loadSessionInfo, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -191,6 +218,21 @@ export function AgentsSidebar({ workspaceId }: AgentsSidebarProps) {
                   <div className="text-xs text-mc-text-secondary truncate">
                     {agent.role}
                   </div>
+                  {/* Model info from gateway session or agent config */}
+                  {(() => {
+                    // Try to find live model from gateway session
+                    const ocSession = openclawSession;
+                    const sessionKey = ocSession ? `agent:main:${ocSession.openclaw_session_id}` : null;
+                    const liveInfo = sessionKey ? sessionInfoMap[sessionKey] : null;
+                    const modelName = liveInfo?.model || agent.model;
+                    if (!modelName) return null;
+                    return (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Cpu className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                        <span className="text-[10px] font-mono text-purple-400 truncate">{modelName}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Status */}

@@ -1,16 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Save, Trash2, Activity, Package, Bot, ClipboardList, Plus } from 'lucide-react';
+import { X, Save, Trash2, Activity, Package, ScrollText, ClipboardList, Plus, RotateCcw } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { ActivityLog } from './ActivityLog';
 import { DeliverablesList } from './DeliverablesList';
-import { SessionsList } from './SessionsList';
+import { AgentTranscript } from './AgentTranscript';
 import { PlanningTab } from './PlanningTab';
 import { AgentModal } from './AgentModal';
 import type { Task, TaskPriority, TaskStatus } from '@/lib/types';
 
-type TabType = 'overview' | 'planning' | 'activity' | 'deliverables' | 'sessions';
+type TabType = 'overview' | 'planning' | 'activity' | 'deliverables' | 'agent_work';
 
 interface TaskModalProps {
   task?: Task;
@@ -21,10 +21,15 @@ interface TaskModalProps {
 export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
   const { agents, addTask, updateTask, addEvent } = useMissionControl();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const [showAgentModal, setShowAgentModal] = useState(false);
   const [usePlanningMode, setUsePlanningMode] = useState(false);
-  // Auto-switch to planning tab if task is in planning status
-  const [activeTab, setActiveTab] = useState<TabType>(task?.status === 'planning' ? 'planning' : 'overview');
+  // Auto-switch to relevant tab based on task status
+  const [activeTab, setActiveTab] = useState<TabType>(
+    task?.status === 'planning' ? 'planning' :
+    task?.status === 'in_progress' ? 'agent_work' :
+    'overview'
+  );
 
   const [form, setForm] = useState({
     title: task?.title || '',
@@ -33,6 +38,8 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     status: task?.status || 'inbox' as TaskStatus,
     assigned_agent_id: task?.assigned_agent_id || '',
     due_date: task?.due_date || '',
+    model_provider: task?.model_provider || '',
+    model: task?.model || '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -119,6 +126,50 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     }
   };
 
+  const handleRestart = async () => {
+    if (!task || !confirm(`Restart "${task.title}"?\n\nThis will:\n- Clear all planning data\n- End any active OpenClaw sessions\n- Re-start planning from scratch\n- Keep the title and description`)) return;
+
+    setIsRestarting(true);
+
+    try {
+      // 1. Reset the task
+      const res = await fetch(`/api/tasks/${task.id}/restart`, { method: 'POST' });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      updateTask(data.task);
+      addEvent({
+        id: crypto.randomUUID(),
+        type: 'task_restarted',
+        task_id: task.id,
+        message: `Task "${task.title}" was restarted`,
+        created_at: new Date().toISOString(),
+      });
+
+      // 2. Auto-start planning so agents can pick up the task again
+      try {
+        const planRes = await fetch(`/api/tasks/${task.id}/planning`, { method: 'POST' });
+        if (planRes.ok) {
+          updateTask({ ...data.task, status: 'planning' });
+        }
+      } catch (err) {
+        console.error('Failed to auto-start planning after restart:', err);
+      }
+
+      // 3. Switch to planning tab
+      setActiveTab('planning');
+      setForm({
+        ...form,
+        status: 'planning',
+        assigned_agent_id: '',
+      });
+    } catch (error) {
+      console.error('Failed to restart task:', error);
+    } finally {
+      setIsRestarting(false);
+    }
+  };
+
   const statuses: TaskStatus[] = ['planning', 'inbox', 'assigned', 'in_progress', 'testing', 'review', 'done'];
   const priorities: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
 
@@ -127,7 +178,7 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
     { id: 'planning' as TabType, label: 'Planning', icon: <ClipboardList className="w-4 h-4" /> },
     { id: 'activity' as TabType, label: 'Activity', icon: <Activity className="w-4 h-4" /> },
     { id: 'deliverables' as TabType, label: 'Deliverables', icon: <Package className="w-4 h-4" /> },
-    { id: 'sessions' as TabType, label: 'Sessions', icon: <Bot className="w-4 h-4" /> },
+    { id: 'agent_work' as TabType, label: 'Agent Work', icon: <ScrollText className="w-4 h-4" /> },
   ];
 
   return (
@@ -291,6 +342,38 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
               className="w-full bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm focus:outline-none focus:border-mc-accent"
             />
           </div>
+
+          {/* Model Override */}
+          <div>
+            <label className="block text-sm font-medium mb-1">Model Override</label>
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={form.model_provider}
+                onChange={(e) => setForm({ ...form, model_provider: e.target.value })}
+                className="bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-mc-accent"
+                placeholder="Provider (blank = agent default)"
+              />
+              <input
+                type="text"
+                value={form.model}
+                onChange={(e) => setForm({ ...form, model: e.target.value })}
+                className="bg-mc-bg border border-mc-border rounded px-3 py-2 text-sm font-mono focus:outline-none focus:border-mc-accent"
+                placeholder="Model (blank = agent default)"
+              />
+            </div>
+            {form.assigned_agent_id && (() => {
+              const assignedAgent = agents.find(a => a.id === form.assigned_agent_id);
+              if (assignedAgent?.model_provider || assignedAgent?.model) {
+                return (
+                  <p className="text-xs text-mc-text-secondary mt-1">
+                    Agent default: {assignedAgent.model_provider || 'gateway'} / {assignedAgent.model || 'default'}
+                  </p>
+                );
+              }
+              return null;
+            })()}
+          </div>
             </form>
           )}
 
@@ -315,9 +398,9 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
             <DeliverablesList taskId={task.id} />
           )}
 
-          {/* Sessions Tab */}
-          {activeTab === 'sessions' && task && (
-            <SessionsList taskId={task.id} />
+          {/* Agent Work Tab */}
+          {activeTab === 'agent_work' && task && (
+            <AgentTranscript taskId={task.id} taskStatus={task.status} />
           )}
         </div>
 
@@ -327,6 +410,16 @@ export function TaskModal({ task, onClose, workspaceId }: TaskModalProps) {
             <div className="flex gap-2">
               {task && (
                 <>
+                  <button
+                    type="button"
+                    onClick={handleRestart}
+                    disabled={isRestarting}
+                    className="flex items-center gap-2 px-3 py-2 text-mc-accent-yellow hover:bg-mc-accent-yellow/10 rounded text-sm disabled:opacity-50"
+                    title="Clear planning data and re-start planning"
+                  >
+                    <RotateCcw className={`w-4 h-4 ${isRestarting ? 'animate-spin' : ''}`} />
+                    {isRestarting ? 'Restarting...' : 'Restart'}
+                  </button>
                   <button
                     type="button"
                     onClick={handleDelete}

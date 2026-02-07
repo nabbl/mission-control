@@ -4,6 +4,7 @@ import { queryOne, run } from '@/lib/db';
 import { getOpenClawClient } from '@/lib/openclaw/client';
 import { broadcast } from '@/lib/events';
 import { getProjectsPath, getMissionControlUrl } from '@/lib/config';
+import { syslog } from '@/lib/logger';
 import type { Task, Agent, OpenClawSession } from '@/lib/types';
 
 interface RouteParams {
@@ -51,12 +52,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Connect to OpenClaw Gateway
+    syslog('info', 'dispatch', `Dispatching task "${task.title}" to agent ${agent.name}`);
+
     const client = getOpenClawClient();
     if (!client.isConnected()) {
       try {
+        syslog('info', 'openclaw', 'Connecting to OpenClaw Gateway...');
         await client.connect();
+        syslog('info', 'openclaw', 'Connected to OpenClaw Gateway');
       } catch (err) {
-        console.error('Failed to connect to OpenClaw Gateway:', err);
+        syslog('error', 'openclaw', `Failed to connect to OpenClaw Gateway: ${(err as Error).message}`);
         return NextResponse.json(
           { error: 'Failed to connect to OpenClaw Gateway' },
           { status: 503 }
@@ -143,12 +148,22 @@ If you need help or clarification, ask me (Charlie).`;
 
     // Send message to agent's session using chat.send
     try {
+      // Resolve model: task override > agent default > gateway default
+      const modelProvider = task.model_provider || agent.model_provider || undefined;
+      const model = task.model || agent.model || undefined;
+
+      if (modelProvider || model) {
+        syslog('info', 'dispatch', `Using model: ${modelProvider || 'default'}/${model || 'default'}`);
+      }
+
       // Use sessionKey for routing to the agent's session
       // Format: agent:main:{openclaw_session_id}
       const sessionKey = `agent:main:${session.openclaw_session_id}`;
       await client.call('chat.send', {
         sessionKey,
         message: taskMessage,
+        ...(modelProvider ? { modelProvider } : {}),
+        ...(model ? { model } : {}),
         idempotencyKey: `dispatch-${task.id}-${Date.now()}`
       });
 
@@ -187,6 +202,8 @@ If you need help or clarification, ask me (Charlie).`;
         ]
       );
 
+      syslog('info', 'dispatch', `Task "${task.title}" dispatched to ${agent.name} (session: ${session.openclaw_session_id})`);
+
       return NextResponse.json({
         success: true,
         task_id: task.id,
@@ -195,14 +212,14 @@ If you need help or clarification, ask me (Charlie).`;
         message: 'Task dispatched to agent'
       });
     } catch (err) {
-      console.error('Failed to send message to agent:', err);
+      syslog('error', 'dispatch', `Failed to send task to agent: ${err instanceof Error ? err.message : 'Unknown error'}`, { taskId: task.id, agentId: agent.id });
       return NextResponse.json(
         { error: `Failed to send task to agent: ${err instanceof Error ? err.message : 'Unknown error'}` },
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error('Failed to dispatch task:', error);
+    syslog('error', 'dispatch', `Failed to dispatch task: ${error instanceof Error ? error.message : 'Unknown'}`, { stack: (error as Error).stack });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to dispatch task' },
       { status: 500 }

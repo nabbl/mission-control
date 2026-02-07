@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS agents (
   status TEXT DEFAULT 'standby' CHECK (status IN ('standby', 'working', 'offline')),
   is_master INTEGER DEFAULT 0,
   workspace_id TEXT DEFAULT 'default' REFERENCES workspaces(id),
+  model_provider TEXT,
+  model TEXT,
   soul_md TEXT,
   user_md TEXT,
   agents_md TEXT,
@@ -50,6 +52,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   workspace_id TEXT DEFAULT 'default' REFERENCES workspaces(id),
   business_id TEXT DEFAULT 'default',
   due_date TEXT,
+  model_provider TEXT,
+  model TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

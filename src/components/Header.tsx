@@ -3,16 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Zap, Settings, ChevronLeft, LayoutGrid } from 'lucide-react';
+import { Zap, Settings, ChevronLeft, LayoutGrid, Terminal } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import { format } from 'date-fns';
 import type { Workspace } from '@/lib/types';
 
 interface HeaderProps {
   workspace?: Workspace;
+  showLog?: boolean;
+  onToggleLog?: () => void;
 }
 
-export function Header({ workspace }: HeaderProps) {
+export function Header({ workspace, showLog, onToggleLog }: HeaderProps) {
   const router = useRouter();
   const { agents, tasks, isOnline } = useMissionControl();
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -119,6 +121,19 @@ export function Header({ workspace }: HeaderProps) {
           />
           {isOnline ? 'ONLINE' : 'OFFLINE'}
         </div>
+        {onToggleLog && (
+          <button
+            onClick={onToggleLog}
+            className={`p-2 rounded transition-colors ${
+              showLog
+                ? 'bg-mc-accent/20 text-mc-accent'
+                : 'text-mc-text-secondary hover:bg-mc-bg-tertiary'
+            }`}
+            title="System Log"
+          >
+            <Terminal className="w-5 h-5" />
+          </button>
+        )}
         <button
           onClick={() => router.push('/settings')}
           className="p-2 hover:bg-mc-bg-tertiary rounded text-mc-text-secondary"

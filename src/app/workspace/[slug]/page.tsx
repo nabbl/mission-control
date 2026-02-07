@@ -9,6 +9,7 @@ import { AgentsSidebar } from '@/components/AgentsSidebar';
 import { MissionQueue } from '@/components/MissionQueue';
 import { LiveFeed } from '@/components/LiveFeed';
 import { SSEDebugPanel } from '@/components/SSEDebugPanel';
+import { SystemLog } from '@/components/SystemLog';
 import { useMissionControl } from '@/lib/store';
 import { useSSE } from '@/hooks/useSSE';
 import { debug } from '@/lib/debug';
@@ -29,6 +30,7 @@ export default function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [showLog, setShowLog] = useState(false);
 
   // Connect to SSE for real-time updates
   useSSE();
@@ -199,7 +201,7 @@ export default function WorkspacePage() {
 
   return (
     <div className="h-screen flex flex-col bg-mc-bg overflow-hidden">
-      <Header workspace={workspace} />
+      <Header workspace={workspace} showLog={showLog} onToggleLog={() => setShowLog(v => !v)} />
 
       <div className="flex-1 flex overflow-hidden">
         {/* Agents Sidebar */}
@@ -214,6 +216,9 @@ export default function WorkspacePage() {
 
       {/* Debug Panel - only shows when debug mode enabled */}
       <SSEDebugPanel />
+
+      {/* System Log Panel */}
+      {showLog && <SystemLog onClose={() => setShowLog(false)} />}
     </div>
   );
 }

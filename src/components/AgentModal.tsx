@@ -14,6 +14,15 @@ interface AgentModalProps {
 
 const EMOJI_OPTIONS = ['🤖', '🦞', '💻', '🔍', '✍️', '🎨', '📊', '🧠', '⚡', '🚀', '🎯', '🔧'];
 
+const MODEL_PRESETS = [
+  { label: 'Gateway Default', provider: '', model: '' },
+  { label: 'Local (LMStudio)', provider: 'lmstudio', model: '' },
+  { label: 'Claude Sonnet 4.5', provider: 'anthropic', model: 'claude-sonnet-4-5-20250929' },
+  { label: 'Claude Opus 4.6', provider: 'anthropic', model: 'claude-opus-4-6' },
+  { label: 'Claude Haiku 4.5', provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  { label: 'Custom', provider: '__custom__', model: '' },
+] as const;
+
 export function AgentModal({ agent, onClose, workspaceId, onAgentCreated }: AgentModalProps) {
   const { addAgent, updateAgent, agents } = useMissionControl();
   const [activeTab, setActiveTab] = useState<'info' | 'soul' | 'user' | 'agents'>('info');
@@ -26,10 +35,21 @@ export function AgentModal({ agent, onClose, workspaceId, onAgentCreated }: Agen
     avatar_emoji: agent?.avatar_emoji || '🤖',
     status: agent?.status || 'standby' as AgentStatus,
     is_master: agent?.is_master || false,
+    model_provider: agent?.model_provider || '',
+    model: agent?.model || '',
     soul_md: agent?.soul_md || '',
     user_md: agent?.user_md || '',
     agents_md: agent?.agents_md || '',
   });
+
+  // Determine which preset matches the current form values
+  const activePreset = MODEL_PRESETS.find(
+    p => p.provider !== '__custom__' && p.provider === form.model_provider && p.model === form.model
+  ) ? undefined : 'custom';
+
+  const isCustomModel = !MODEL_PRESETS.some(
+    p => p.provider !== '__custom__' && p.provider === form.model_provider && (p.model === '' || p.model === form.model)
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,6 +235,63 @@ export function AgentModal({ agent, onClose, workspaceId, onAgentCreated }: Agen
                 <label htmlFor="is_master" className="text-sm">
                   Master Orchestrator (can coordinate other agents)
                 </label>
+              </div>
+
+              {/* Model Config */}
+              <div className="p-3 bg-mc-bg rounded-lg border border-mc-border space-y-3">
+                <label className="block text-sm font-medium">Model</label>
+                <div className="flex flex-wrap gap-2">
+                  {MODEL_PRESETS.map((preset) => {
+                    const isActive = preset.provider === '__custom__'
+                      ? isCustomModel
+                      : preset.provider === form.model_provider && (preset.model === '' ? !form.model : preset.model === form.model);
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          if (preset.provider !== '__custom__') {
+                            setForm({ ...form, model_provider: preset.provider, model: preset.model });
+                          }
+                        }}
+                        className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                          isActive
+                            ? 'border-mc-accent bg-mc-accent/20 text-mc-accent'
+                            : 'border-mc-border text-mc-text-secondary hover:border-mc-accent/50'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(isCustomModel || form.model_provider) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-mc-text-secondary mb-1">Provider</label>
+                      <input
+                        type="text"
+                        value={form.model_provider}
+                        onChange={(e) => setForm({ ...form, model_provider: e.target.value })}
+                        className="w-full bg-mc-bg-secondary border border-mc-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-mc-accent"
+                        placeholder="e.g. anthropic, lmstudio"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-mc-text-secondary mb-1">Model</label>
+                      <input
+                        type="text"
+                        value={form.model}
+                        onChange={(e) => setForm({ ...form, model: e.target.value })}
+                        className="w-full bg-mc-bg-secondary border border-mc-border rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:border-mc-accent"
+                        placeholder="e.g. claude-sonnet-4-5-20250929"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-mc-text-secondary">
+                  Leave empty to use the OpenClaw gateway default.
+                </p>
               </div>
             </div>
           )}

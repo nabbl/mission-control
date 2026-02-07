@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, Circle, Lock, AlertCircle, Loader2 } from 'lucide-react';
 
 interface PlanningOption {
-  id: string;
+  id: string | number;
   label: string;
 }
 
@@ -119,8 +119,8 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          answer: selectedOption === 'other' ? 'Other' : selectedOption,
-          otherText: selectedOption === 'other' ? otherText : undefined,
+          answer: selectedOption.toLowerCase() === 'other' ? 'other' : selectedOption,
+          otherText: selectedOption.toLowerCase() === 'other' ? otherText : undefined,
         }),
       });
       
@@ -286,7 +286,7 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
             <div className="space-y-3">
               {state.currentQuestion.options.map((option) => {
                 const isSelected = selectedOption === option.label;
-                const isOther = option.id === 'other' || option.label.toLowerCase() === 'other';
+                const isOther = String(option.id) === 'other' || option.label.toLowerCase() === 'other';
 
                 return (
                   <div key={option.id}>
@@ -302,7 +302,7 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
                       <span className={`w-8 h-8 rounded flex items-center justify-center text-sm font-bold ${
                         isSelected ? 'bg-mc-accent text-mc-bg' : 'bg-mc-bg-tertiary'
                       }`}>
-                        {option.id.toUpperCase()}
+                        {String(option.id).toUpperCase()}
                       </span>
                       <span className="flex-1">{option.label}</span>
                       {isSelected && <CheckCircle className="w-5 h-5 text-mc-accent" />}
@@ -337,7 +337,7 @@ export function PlanningTab({ taskId, onSpecLocked }: PlanningTabProps) {
             <div className="mt-6">
               <button
                 onClick={submitAnswer}
-                disabled={!selectedOption || submitting || (selectedOption === 'Other' && !otherText.trim())}
+                disabled={!selectedOption || submitting || (selectedOption.toLowerCase() === 'other' && !otherText.trim())}
                 className="w-full px-6 py-3 bg-mc-accent text-mc-bg rounded-lg font-medium hover:bg-mc-accent/90 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting ? (
