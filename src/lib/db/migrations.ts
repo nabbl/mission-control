@@ -172,6 +172,19 @@ const migrations: Migration[] = [
         console.log('[Migration 005] Added model_provider, model to tasks');
       }
     }
+  },
+  {
+    id: '006',
+    name: 'add_dispatch_error',
+    up: (db) => {
+      console.log('[Migration 006] Adding dispatch_error column to tasks...');
+
+      const tasksInfo = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+      if (!tasksInfo.some(col => col.name === 'dispatch_error')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN dispatch_error TEXT`);
+        console.log('[Migration 006] Added dispatch_error to tasks');
+      }
+    }
   }
 ];
 

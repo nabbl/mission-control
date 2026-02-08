@@ -160,10 +160,20 @@ export default function WorkspacePage() {
       }
     }, 30000);
 
+    // Reconcile DB with gateway every 60 seconds (server debounces to 30s)
+    const reconcileCheck = setInterval(async () => {
+      try {
+        await fetch('/api/reconcile');
+      } catch {
+        // Reconciliation is best-effort
+      }
+    }, 60000);
+
     return () => {
       clearInterval(eventPoll);
       clearInterval(connectionCheck);
       clearInterval(taskPoll);
+      clearInterval(reconcileCheck);
     };
   }, [workspace, setAgents, setTasks, setEvents, setIsOnline, setIsLoading]);
 

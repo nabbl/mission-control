@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ChevronRight, GripVertical } from 'lucide-react';
+import { Plus, ChevronRight, GripVertical, AlertTriangle, RotateCcw } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
@@ -151,6 +151,20 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't open the modal
+    setRetrying(true);
+    try {
+      await fetch(`/api/tasks/${task.id}/dispatch`, { method: 'POST' });
+    } catch {
+      // Dispatch route handles error recording
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const priorityStyles = {
     low: 'text-mc-text-secondary',
     normal: 'text-mc-accent',
@@ -203,6 +217,24 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
             <span className="text-xs text-mc-text-secondary truncate">
               {(task.assigned_agent as unknown as { name: string }).name}
             </span>
+          </div>
+        )}
+
+        {/* Dispatch error indicator */}
+        {task.dispatch_error && (
+          <div className="flex items-start gap-2 mb-3 py-2 px-3 bg-amber-500/10 rounded-md border border-amber-500/20">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-amber-400 line-clamp-2">{task.dispatch_error}</span>
+            </div>
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="flex-shrink-0 p-1 rounded hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+              title="Retry dispatch"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${retrying ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         )}
 

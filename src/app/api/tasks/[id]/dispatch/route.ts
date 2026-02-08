@@ -83,9 +83,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const openclawSessionId = `mission-control-${agent.name.toLowerCase().replace(/\s+/g, '-')}`;
       
       run(
-        `INSERT INTO openclaw_sessions (id, agent_id, openclaw_session_id, channel, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [sessionId, agent.id, openclawSessionId, 'mission-control', 'active', now, now]
+        `INSERT INTO openclaw_sessions (id, agent_id, openclaw_session_id, channel, status, task_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [sessionId, agent.id, openclawSessionId, 'mission-control', 'active', task.id, now, now]
       );
 
       session = queryOne<OpenClawSession>(
@@ -105,6 +105,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         { error: 'Failed to create agent session' },
         { status: 500 }
+      );
+    }
+
+    // Backfill task_id on reused session if missing
+    if (!session.task_id || session.task_id !== task.id) {
+      run(
+        'UPDATE openclaw_sessions SET task_id = ?, updated_at = ? WHERE id = ?',
+        [task.id, now, session.id]
       );
     }
 
@@ -167,9 +175,9 @@ If you need help or clarification, ask me (Charlie).`;
         idempotencyKey: `dispatch-${task.id}-${Date.now()}`
       });
 
-      // Update task status to in_progress
+      // Update task status to in_progress and clear any previous dispatch error
       run(
-        'UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?',
+        'UPDATE tasks SET status = ?, dispatch_error = NULL, updated_at = ? WHERE id = ?',
         ['in_progress', now, id]
       );
 
@@ -212,9 +220,21 @@ If you need help or clarification, ask me (Charlie).`;
         message: 'Task dispatched to agent'
       });
     } catch (err) {
-      syslog('error', 'dispatch', `Failed to send task to agent: ${err instanceof Error ? err.message : 'Unknown error'}`, { taskId: task.id, agentId: agent.id });
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      syslog('error', 'dispatch', `Failed to send task to agent: ${errMsg}`, { taskId: task.id, agentId: agent.id });
+
+      // Record dispatch error on the task
+      run(
+        'UPDATE tasks SET dispatch_error = ?, updated_at = ? WHERE id = ?',
+        [`Dispatch failed: ${errMsg}`, now, id]
+      );
+      const erroredTask = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
+      if (erroredTask) {
+        broadcast({ type: 'task_updated', payload: erroredTask });
+      }
+
       return NextResponse.json(
-        { error: `Failed to send task to agent: ${err instanceof Error ? err.message : 'Unknown error'}` },
+        { error: `Failed to send task to agent: ${errMsg}` },
         { status: 500 }
       );
     }

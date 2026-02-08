@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { queryOne, run, queryAll } from '@/lib/db';
 import { broadcast } from '@/lib/events';
 import { getMissionControlUrl } from '@/lib/config';
+import { syslog } from '@/lib/logger';
 import type { Task, UpdateTaskRequest, Agent, TaskDeliverable } from '@/lib/types';
 
 // GET /api/tasks/[id] - Get a single task
@@ -168,8 +169,22 @@ export async function PATCH(
       fetch(`${missionControlUrl}/api/tasks/${id}/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
+      }).then(async (res) => {
+        if (!res.ok) {
+          const body = await res.text().catch(() => 'unknown');
+          throw new Error(`HTTP ${res.status}: ${body}`);
+        }
       }).catch(err => {
-        console.error('Auto-dispatch failed:', err);
+        const errMsg = err instanceof Error ? err.message : 'Unknown error';
+        syslog('error', 'dispatch', `Auto-dispatch failed for task ${id}: ${errMsg}`);
+        run(
+          'UPDATE tasks SET dispatch_error = ?, updated_at = ? WHERE id = ?',
+          [`Auto-dispatch failed: ${errMsg}`, new Date().toISOString(), id]
+        );
+        const erroredTask = queryOne<Task>('SELECT * FROM tasks WHERE id = ?', [id]);
+        if (erroredTask) {
+          broadcast({ type: 'task_updated', payload: erroredTask });
+        }
       });
     }
 

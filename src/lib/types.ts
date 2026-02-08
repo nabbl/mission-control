@@ -52,6 +52,7 @@ export interface Task {
   due_date?: string;
   model_provider?: string;
   model?: string;
+  dispatch_error?: string;
   created_at: string;
   updated_at: string;
   // Joined fields
@@ -330,7 +331,8 @@ export type SSEEventType =
   | 'activity_logged'
   | 'deliverable_added'
   | 'agent_spawned'
-  | 'agent_completed';
+  | 'agent_completed'
+  | 'reconcile_completed';
 
 export interface SSEEvent {
   type: SSEEventType;

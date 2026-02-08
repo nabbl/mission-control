@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   due_date TEXT,
   model_provider TEXT,
   model TEXT,
+  dispatch_error TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

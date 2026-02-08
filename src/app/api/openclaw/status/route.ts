@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getOpenClawClient } from '@/lib/openclaw/client';
+import { reconcile } from '@/lib/reconcile';
+
+let initialReconcileDone = false;
 
 // GET /api/openclaw/status - Check OpenClaw connection status
 export async function GET() {
@@ -21,6 +24,14 @@ export async function GET() {
     // Try to list sessions to verify connection
     try {
       const sessions = await client.listSessions();
+
+      // Trigger initial reconciliation after first successful listSessions
+      if (!initialReconcileDone) {
+        initialReconcileDone = true;
+        // Fire async — don't block the status response
+        reconcile().catch(() => {});
+      }
+
       return NextResponse.json({
         connected: true,
         sessions_count: sessions.length,
