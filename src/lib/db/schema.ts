@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS agents (
   workspace_id TEXT DEFAULT 'default' REFERENCES workspaces(id),
   model_provider TEXT,
   model TEXT,
+  skills TEXT,
   soul_md TEXT,
   user_md TEXT,
   agents_md TEXT,

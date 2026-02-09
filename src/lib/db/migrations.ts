@@ -185,6 +185,19 @@ const migrations: Migration[] = [
         console.log('[Migration 006] Added dispatch_error to tasks');
       }
     }
+  },
+  {
+    id: '007',
+    name: 'add_agent_skills',
+    up: (db) => {
+      console.log('[Migration 007] Adding skills column to agents...');
+
+      const agentsInfo = db.prepare("PRAGMA table_info(agents)").all() as { name: string }[];
+      if (!agentsInfo.some(col => col.name === 'skills')) {
+        db.exec(`ALTER TABLE agents ADD COLUMN skills TEXT`);
+        console.log('[Migration 007] Added skills to agents');
+      }
+    }
   }
 ];
 

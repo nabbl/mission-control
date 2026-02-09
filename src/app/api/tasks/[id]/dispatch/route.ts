@@ -154,6 +154,26 @@ When complete, reply with:
 
 If you need help or clarification, ask me (Charlie).`;
 
+    // Inject skill instructions based on agent's skills
+    const agentSkills: string[] = (() => {
+      try { return JSON.parse(agent.skills as unknown as string || '[]'); }
+      catch { return []; }
+    })();
+
+    let skillInstructions = '';
+    if (agentSkills.includes('coding-agent')) {
+      skillInstructions += `\n\n**AVAILABLE SKILLS:**
+You have the \`coding-agent\` skill available. For any coding work (writing, editing, or debugging code, running commands, using git), invoke it with:
+/coding-agent <your instructions>
+Use this skill instead of writing code inline.`;
+    }
+
+    const fullTaskMessage = skillInstructions ? taskMessage + skillInstructions : taskMessage;
+
+    if (agentSkills.length > 0) {
+      syslog('info', 'dispatch', `Agent ${agent.name} has skills: ${agentSkills.join(', ')}`);
+    }
+
     // Send message to agent's session using chat.send
     try {
       // Resolve model: task override > agent default > gateway default
@@ -169,8 +189,7 @@ If you need help or clarification, ask me (Charlie).`;
       const sessionKey = `agent:main:${session.openclaw_session_id}`;
       await client.call('chat.send', {
         sessionKey,
-        message: taskMessage,
-        ...(modelProvider ? { modelProvider } : {}),
+        message: fullTaskMessage,
         ...(model ? { model } : {}),
         idempotencyKey: `dispatch-${task.id}-${Date.now()}`
       });

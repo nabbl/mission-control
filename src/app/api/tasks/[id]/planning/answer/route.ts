@@ -64,6 +64,10 @@ When completing, include a full spec with title, summary, deliverables, success_
 
 Also include a "suggested_model" object with "provider" and "model" fields. Use "anthropic" provider with "claude-sonnet-4-5-20250929" for complex programming/coding tasks. Use "lmstudio" provider (empty model) for simpler tasks like writing, research, or content generation.
 
+Each agent can optionally be assigned skills from this list: ["coding-agent"].
+- "coding-agent": Gives the agent access to Claude Code CLI for writing/editing code, running commands, using git, file system access, etc. Assign this skill to any agent that needs to produce, modify, or debug code.
+Include a "skills" array on each agent (empty array if no skills needed).
+
 You MUST respond with a JSON object containing a "type" field set to either "question" or "complete".`;
 
     // Call llm-task with full conversation history
@@ -112,8 +116,8 @@ You MUST respond with a JSON object containing a "type" field set to either "que
 
       if (result.agents && result.agents.length > 0) {
         const insertAgent = getDb().prepare(`
-          INSERT INTO agents (id, workspace_id, name, role, description, avatar_emoji, status, soul_md, created_at, updated_at)
-          VALUES (?, (SELECT workspace_id FROM tasks WHERE id = ?), ?, ?, ?, ?, 'standby', ?, datetime('now'), datetime('now'))
+          INSERT INTO agents (id, workspace_id, name, role, description, avatar_emoji, status, soul_md, skills, created_at, updated_at)
+          VALUES (?, (SELECT workspace_id FROM tasks WHERE id = ?), ?, ?, ?, ?, 'standby', ?, ?, datetime('now'), datetime('now'))
         `);
 
         for (const agent of result.agents) {
@@ -127,7 +131,8 @@ You MUST respond with a JSON object containing a "type" field set to either "que
             agent.role,
             agent.instructions || '',
             agent.avatar_emoji || '🤖',
-            agent.soul_md || ''
+            agent.soul_md || '',
+            JSON.stringify(agent.skills || [])
           );
         }
       }

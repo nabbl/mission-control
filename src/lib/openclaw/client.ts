@@ -415,6 +415,7 @@ export interface PlanningCompleteResponse {
     avatar_emoji?: string;
     soul_md?: string;
     instructions?: string;
+    skills?: string[];
   }>;
   execution_plan: {
     approach: string;
@@ -501,6 +502,7 @@ export function normalisePlanningResponse(raw: Record<string, unknown>): Plannin
         avatar_emoji: typeof a.avatar_emoji === 'string' ? a.avatar_emoji : undefined,
         soul_md: typeof a.soul_md === 'string' ? a.soul_md : undefined,
         instructions: typeof a.instructions === 'string' ? a.instructions : undefined,
+        skills: Array.isArray(a.skills) ? a.skills.map(String) : undefined,
       }))
     : [{ name: 'Agent', role: 'General' }];
 

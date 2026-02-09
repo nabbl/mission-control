@@ -32,6 +32,7 @@ export interface Agent {
   workspace_id: string;
   model_provider?: string;
   model?: string;
+  skills?: string[];
   soul_md?: string;
   user_md?: string;
   agents_md?: string;

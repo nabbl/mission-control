@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, ChevronRight, GripVertical, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Plus, ChevronRight, GripVertical, AlertTriangle, RotateCcw, Cpu } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
@@ -237,6 +237,19 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
             </button>
           </div>
         )}
+
+        {/* Model badge */}
+        {(() => {
+          const agent = task.assigned_agent as unknown as { model?: string } | undefined;
+          const modelName = task.model || agent?.model;
+          if (!modelName) return null;
+          return (
+            <div className="flex items-center gap-1.5 mb-3">
+              <Cpu className="w-3 h-3 text-purple-400 flex-shrink-0" />
+              <span className="text-[10px] font-mono text-purple-400 truncate">{modelName}</span>
+            </div>
+          );
+        })()}
 
         {/* Footer: priority + timestamp */}
         <div className="flex items-center justify-between pt-2 border-t border-mc-border/20">
