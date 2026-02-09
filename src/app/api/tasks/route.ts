@@ -12,9 +12,6 @@ export async function GET(request: NextRequest) {
     const businessId = searchParams.get('business_id');
     const workspaceId = searchParams.get('workspace_id');
     const assignedAgentId = searchParams.get('assigned_agent_id');
-    const parentTaskId = searchParams.get('parent_task_id');
-    const includeSubtasks = searchParams.get('include_subtasks') === 'true';
-
     let sql = `
       SELECT
         t.*,
@@ -27,14 +24,6 @@ export async function GET(request: NextRequest) {
       WHERE 1=1
     `;
     const params: unknown[] = [];
-
-    // Subtask filtering
-    if (parentTaskId) {
-      sql += ' AND t.parent_task_id = ?';
-      params.push(parentTaskId);
-    } else if (!includeSubtasks) {
-      sql += ' AND t.parent_task_id IS NULL';
-    }
 
     if (status) {
       // Support comma-separated status values (e.g., status=inbox,testing,in_progress)
@@ -64,15 +53,6 @@ export async function GET(request: NextRequest) {
 
     const tasks = queryAll<Task & { assigned_agent_name?: string; assigned_agent_emoji?: string; created_by_agent_name?: string }>(sql, params);
 
-    // Compute subtask progress for parent tasks
-    const subtaskProgress = queryAll<{ parent_task_id: string; total: number; done: number }>(
-      `SELECT parent_task_id,
-        COUNT(*) as total,
-        SUM(CASE WHEN status IN ('review','done') THEN 1 ELSE 0 END) as done
-      FROM tasks WHERE parent_task_id IS NOT NULL GROUP BY parent_task_id`
-    );
-    const progressMap = new Map(subtaskProgress.map(p => [p.parent_task_id, { total: p.total, done: p.done }]));
-
     // Transform to include nested agent info
     const transformedTasks = tasks.map((task) => ({
       ...task,
@@ -83,7 +63,6 @@ export async function GET(request: NextRequest) {
             avatar_emoji: task.assigned_agent_emoji,
           }
         : undefined,
-      subtask_progress: progressMap.get(task.id),
     }));
 
     return NextResponse.json(transformedTasks);

@@ -162,18 +162,6 @@ export async function PATCH(
       });
     }
 
-    // Trigger subtask dependency resolution if a subtask is being completed
-    if (body.status && ['review', 'done'].includes(body.status)) {
-      const updated = queryOne<Task>('SELECT parent_task_id FROM tasks WHERE id = ?', [id]);
-      if (updated?.parent_task_id) {
-        import('@/lib/subtasks').then(({ onSubtaskCompleted }) => {
-          onSubtaskCompleted(id).catch(err =>
-            syslog('error', 'subtasks', `Dependency resolution failed: ${(err as Error).message}`)
-          );
-        });
-      }
-    }
-
     // Trigger auto-dispatch if needed
     if (shouldDispatch) {
       // Call dispatch endpoint asynchronously (don't wait for response)

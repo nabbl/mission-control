@@ -62,8 +62,6 @@ export interface Task {
   // Joined fields
   assigned_agent?: Agent;
   created_by_agent?: Agent;
-  // Computed (API-layer, not DB)
-  subtask_progress?: { total: number; done: number };
 }
 
 export interface Conversation {

@@ -400,21 +400,6 @@ export interface PlanningQuestionResponse {
   options: Array<{ id: string | number; label: string }>;
 }
 
-export interface PlanningSubtask {
-  title: string;
-  description: string;
-  instructions: string;
-  agent: {
-    name: string;
-    role: string;
-    avatar_emoji?: string;
-    soul_md?: string;
-    skills?: string[];
-  };
-  branch_name?: string;
-  depends_on?: string[]; // references other subtask titles
-}
-
 export interface PlanningCompleteResponse {
   type: 'complete';
   spec: {
@@ -440,7 +425,6 @@ export interface PlanningCompleteResponse {
     provider: string;
     model: string;
   };
-  subtasks?: PlanningSubtask[];
 }
 
 export type PlanningResponse = PlanningQuestionResponse | PlanningCompleteResponse;
@@ -522,26 +506,6 @@ export function normalisePlanningResponse(raw: Record<string, unknown>): Plannin
       }))
     : [{ name: 'Agent', role: 'General' }];
 
-  const subtasks = Array.isArray(raw.subtasks)
-    ? (raw.subtasks as Array<Record<string, unknown>>).map(st => ({
-        title: String(st.title ?? 'Subtask'),
-        description: String(st.description ?? ''),
-        instructions: String(st.instructions ?? st.description ?? ''),
-        agent: (() => {
-          const a = (st.agent ?? {}) as Record<string, unknown>;
-          return {
-            name: String(a.name ?? 'Agent'),
-            role: String(a.role ?? 'General'),
-            avatar_emoji: typeof a.avatar_emoji === 'string' ? a.avatar_emoji : undefined,
-            soul_md: typeof a.soul_md === 'string' ? a.soul_md : undefined,
-            skills: Array.isArray(a.skills) ? a.skills.map(String) : undefined,
-          };
-        })(),
-        branch_name: typeof st.branch_name === 'string' ? st.branch_name : undefined,
-        depends_on: Array.isArray(st.depends_on) ? st.depends_on.map(String) : undefined,
-      }))
-    : undefined;
-
   const execPlan = (raw.execution_plan ?? {}) as Record<string, unknown>;
 
   // Extract model suggestion if present
@@ -565,6 +529,5 @@ export function normalisePlanningResponse(raw: Record<string, unknown>): Plannin
       steps: Array.isArray(execPlan.steps) ? execPlan.steps.map(stringify) : [],
     },
     suggested_model,
-    subtasks,
   };
 }
