@@ -198,6 +198,28 @@ const migrations: Migration[] = [
         console.log('[Migration 007] Added skills to agents');
       }
     }
+  },
+  {
+    id: '008',
+    name: 'add_subtask_columns',
+    up: (db) => {
+      console.log('[Migration 008] Adding subtask columns to tasks...');
+
+      const tasksInfo = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+      if (!tasksInfo.some(col => col.name === 'parent_task_id')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN parent_task_id TEXT REFERENCES tasks(id)`);
+        console.log('[Migration 008] Added parent_task_id to tasks');
+      }
+      if (!tasksInfo.some(col => col.name === 'branch_name')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN branch_name TEXT`);
+        console.log('[Migration 008] Added branch_name to tasks');
+      }
+      if (!tasksInfo.some(col => col.name === 'depends_on')) {
+        db.exec(`ALTER TABLE tasks ADD COLUMN depends_on TEXT`);
+        console.log('[Migration 008] Added depends_on to tasks');
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)`);
+    }
   }
 ];
 

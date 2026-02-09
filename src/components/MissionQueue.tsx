@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, ChevronRight, GripVertical, AlertTriangle, RotateCcw, Cpu } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, ChevronRight, ChevronDown, GripVertical, AlertTriangle, RotateCcw, Cpu, GitBranch } from 'lucide-react';
 import { useMissionControl } from '@/lib/store';
 import type { Task, TaskStatus } from '@/lib/types';
 import { TaskModal } from './TaskModal';
@@ -26,6 +26,41 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const [subtasksByParent, setSubtasksByParent] = useState<Record<string, Task[]>>({});
+
+  const fetchSubtasks = useCallback(async (parentId: string) => {
+    try {
+      const res = await fetch(`/api/tasks?parent_task_id=${parentId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSubtasksByParent(prev => ({ ...prev, [parentId]: data }));
+      }
+    } catch {
+      // Silently fail
+    }
+  }, []);
+
+  const toggleExpand = useCallback((taskId: string) => {
+    setExpandedParents(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+        fetchSubtasks(taskId);
+      }
+      return next;
+    });
+  }, [fetchSubtasks]);
+
+  // Re-fetch subtasks when SSE events arrive for expanded parents
+  useEffect(() => {
+    Array.from(expandedParents).forEach(parentId => {
+      fetchSubtasks(parentId);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
 
   const getTasksByStatus = (status: TaskStatus) =>
     tasks.filter((task) => task.status === status);
@@ -118,13 +153,28 @@ export function MissionQueue({ workspaceId }: MissionQueueProps) {
               {/* Tasks */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {columnTasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onDragStart={handleDragStart}
-                    onClick={() => setEditingTask(task)}
-                    isDragging={draggedTask?.id === task.id}
-                  />
+                  <div key={task.id}>
+                    <TaskCard
+                      task={task}
+                      onDragStart={handleDragStart}
+                      onClick={() => setEditingTask(task)}
+                      isDragging={draggedTask?.id === task.id}
+                      isExpanded={expandedParents.has(task.id)}
+                      onToggleExpand={task.subtask_progress ? () => toggleExpand(task.id) : undefined}
+                    />
+                    {/* Subtask mini-cards */}
+                    {expandedParents.has(task.id) && subtasksByParent[task.id] && (
+                      <div className="ml-3 mt-1 space-y-1 border-l-2 border-mc-accent/20 pl-2">
+                        {subtasksByParent[task.id].map((sub) => (
+                          <SubtaskMiniCard
+                            key={sub.id}
+                            task={sub}
+                            onClick={() => setEditingTask(sub)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -148,9 +198,11 @@ interface TaskCardProps {
   onDragStart: (e: React.DragEvent, task: Task) => void;
   onClick: () => void;
   isDragging: boolean;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
-function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
+function TaskCard({ task, onDragStart, onClick, isDragging, isExpanded, onToggleExpand }: TaskCardProps) {
   const [retrying, setRetrying] = useState(false);
 
   const handleRetry = async (e: React.MouseEvent) => {
@@ -180,27 +232,61 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
   };
 
   const isPlanning = task.status === 'planning';
+  const isParent = !!task.subtask_progress;
 
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart(e, task)}
+      draggable={!isParent}
+      onDragStart={(e) => !isParent && onDragStart(e, task)}
       onClick={onClick}
       className={`group bg-mc-bg-secondary border rounded-lg cursor-pointer transition-all hover:shadow-lg hover:shadow-black/20 ${
         isDragging ? 'opacity-50 scale-95' : ''
-      } ${isPlanning ? 'border-purple-500/40 hover:border-purple-500' : 'border-mc-border/50 hover:border-mc-accent/40'}`}
+      } ${isPlanning ? 'border-purple-500/40 hover:border-purple-500' : isParent ? 'border-mc-accent/30 hover:border-mc-accent/60' : 'border-mc-border/50 hover:border-mc-accent/40'}`}
     >
-      {/* Drag handle bar */}
-      <div className="flex items-center justify-center py-1.5 border-b border-mc-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
-        <GripVertical className="w-4 h-4 text-mc-text-secondary/50 cursor-grab" />
-      </div>
+      {/* Drag handle bar (hidden for parent tasks) */}
+      {!isParent && (
+        <div className="flex items-center justify-center py-1.5 border-b border-mc-border/30 opacity-0 group-hover:opacity-100 transition-opacity">
+          <GripVertical className="w-4 h-4 text-mc-text-secondary/50 cursor-grab" />
+        </div>
+      )}
 
       {/* Card content */}
       <div className="p-4">
-        {/* Title */}
-        <h4 className="text-sm font-medium leading-snug line-clamp-2 mb-3">
-          {task.title}
-        </h4>
+        {/* Title + expand toggle */}
+        <div className="flex items-start gap-1.5 mb-3">
+          {onToggleExpand && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+              className="flex-shrink-0 p-0.5 mt-0.5 rounded hover:bg-mc-bg-tertiary text-mc-text-secondary transition-colors"
+            >
+              {isExpanded
+                ? <ChevronDown className="w-3.5 h-3.5" />
+                : <ChevronRight className="w-3.5 h-3.5" />
+              }
+            </button>
+          )}
+          <h4 className="text-sm font-medium leading-snug line-clamp-2">
+            {task.title}
+          </h4>
+        </div>
+
+        {/* Subtask progress bar */}
+        {task.subtask_progress && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-mc-text-secondary">Subtasks</span>
+              <span className="text-[10px] text-mc-accent font-medium">
+                {task.subtask_progress.done}/{task.subtask_progress.total}
+              </span>
+            </div>
+            <div className="h-1.5 bg-mc-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-mc-accent rounded-full transition-all"
+                style={{ width: `${task.subtask_progress.total > 0 ? (task.subtask_progress.done / task.subtask_progress.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
         
         {/* Planning mode indicator */}
         {isPlanning && (
@@ -263,6 +349,44 @@ function TaskCard({ task, onDragStart, onClick, isDragging }: TaskCardProps) {
             {formatDistanceToNow(new Date(task.created_at), { addSuffix: true })}
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const statusColors: Record<string, string> = {
+  inbox: 'bg-pink-500/20 text-pink-400',
+  assigned: 'bg-yellow-500/20 text-yellow-400',
+  in_progress: 'bg-blue-500/20 text-blue-400',
+  testing: 'bg-cyan-500/20 text-cyan-400',
+  review: 'bg-purple-500/20 text-purple-400',
+  done: 'bg-green-500/20 text-green-400',
+};
+
+function SubtaskMiniCard({ task, onClick }: { task: Task; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      className="bg-mc-bg-secondary/60 border border-mc-border/30 rounded px-3 py-2 cursor-pointer hover:border-mc-accent/30 transition-colors"
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${statusColors[task.status] || 'bg-mc-bg-tertiary text-mc-text-secondary'}`}>
+          {task.status.replace('_', ' ').toUpperCase()}
+        </span>
+        <h5 className="text-xs font-medium truncate flex-1">{task.title}</h5>
+      </div>
+      <div className="flex items-center gap-3">
+        {task.assigned_agent && (
+          <span className="text-[10px] text-mc-text-secondary truncate">
+            {(task.assigned_agent as unknown as { avatar_emoji?: string }).avatar_emoji} {(task.assigned_agent as unknown as { name: string }).name}
+          </span>
+        )}
+        {task.branch_name && (
+          <span className="flex items-center gap-1 text-[10px] text-mc-text-secondary/60 truncate">
+            <GitBranch className="w-2.5 h-2.5" />
+            {task.branch_name}
+          </span>
+        )}
       </div>
     </div>
   );

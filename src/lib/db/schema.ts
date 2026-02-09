@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   model_provider TEXT,
   model TEXT,
   dispatch_error TEXT,
+  parent_task_id TEXT REFERENCES tasks(id),
+  branch_name TEXT,
+  depends_on TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -180,4 +183,5 @@ CREATE INDEX IF NOT EXISTS idx_activities_task ON task_activities(task_id, creat
 CREATE INDEX IF NOT EXISTS idx_deliverables_task ON task_deliverables(task_id);
 CREATE INDEX IF NOT EXISTS idx_openclaw_sessions_task ON openclaw_sessions(task_id);
 CREATE INDEX IF NOT EXISTS idx_planning_questions_task ON planning_questions(task_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id);
 `;

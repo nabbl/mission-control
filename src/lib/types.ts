@@ -54,11 +54,16 @@ export interface Task {
   model_provider?: string;
   model?: string;
   dispatch_error?: string;
+  parent_task_id?: string;
+  branch_name?: string;
+  depends_on?: string; // JSON array of task IDs stored as TEXT
   created_at: string;
   updated_at: string;
   // Joined fields
   assigned_agent?: Agent;
   created_by_agent?: Agent;
+  // Computed (API-layer, not DB)
+  subtask_progress?: { total: number; done: number };
 }
 
 export interface Conversation {

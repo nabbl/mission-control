@@ -162,6 +162,18 @@ export async function PATCH(
       });
     }
 
+    // Trigger subtask dependency resolution if a subtask is being completed
+    if (body.status && ['review', 'done'].includes(body.status)) {
+      const updated = queryOne<Task>('SELECT parent_task_id FROM tasks WHERE id = ?', [id]);
+      if (updated?.parent_task_id) {
+        import('@/lib/subtasks').then(({ onSubtaskCompleted }) => {
+          onSubtaskCompleted(id).catch(err =>
+            syslog('error', 'subtasks', `Dependency resolution failed: ${(err as Error).message}`)
+          );
+        });
+      }
+    }
+
     // Trigger auto-dispatch if needed
     if (shouldDispatch) {
       // Call dispatch endpoint asynchronously (don't wait for response)
@@ -207,6 +219,15 @@ export async function DELETE(
     if (!existing) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 });
     }
+
+    // Delete subtasks first (cascade)
+    const subtaskIds = queryAll<{ id: string }>('SELECT id FROM tasks WHERE parent_task_id = ?', [id]);
+    for (const sub of subtaskIds) {
+      run('DELETE FROM openclaw_sessions WHERE task_id = ?', [sub.id]);
+      run('DELETE FROM events WHERE task_id = ?', [sub.id]);
+      run('UPDATE conversations SET task_id = NULL WHERE task_id = ?', [sub.id]);
+    }
+    run('DELETE FROM tasks WHERE parent_task_id = ?', [id]);
 
     // Delete or nullify related records first (foreign key constraints)
     // Note: task_activities and task_deliverables have ON DELETE CASCADE

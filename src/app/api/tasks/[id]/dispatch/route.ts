@@ -41,6 +41,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Guard: parent tasks with subtasks cannot be dispatched directly
+    const subtaskCount = queryOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM tasks WHERE parent_task_id = ?', [id]
+    );
+    if (subtaskCount && subtaskCount.count > 0) {
+      return NextResponse.json(
+        { error: 'Parent tasks with subtasks cannot be dispatched directly' },
+        { status: 400 }
+      );
+    }
+
     // Get agent details
     const agent = queryOne<Agent>(
       'SELECT * FROM agents WHERE id = ?',
@@ -168,7 +179,18 @@ You have the \`coding-agent\` skill available. For any coding work (writing, edi
 Use this skill instead of writing code inline.`;
     }
 
-    const fullTaskMessage = skillInstructions ? taskMessage + skillInstructions : taskMessage;
+    // Prepend branch instructions for subtasks
+    let branchInstructions = '';
+    if (task.parent_task_id && (task as unknown as { branch_name?: string }).branch_name) {
+      const branchName = (task as unknown as { branch_name: string }).branch_name;
+      branchInstructions = `\n\n**GIT BRANCH:** \`${branchName}\`
+- Create this branch from \`main\`: \`git checkout -b ${branchName} main\`
+- Do ALL work on this branch
+- When complete, push and create a PR from \`${branchName}\` to \`main\`
+- Include the PR URL when reporting deliverables\n`;
+    }
+
+    const fullTaskMessage = branchInstructions + taskMessage + (skillInstructions || '');
 
     if (agentSkills.length > 0) {
       syslog('info', 'dispatch', `Agent ${agent.name} has skills: ${agentSkills.join(', ')}`);
